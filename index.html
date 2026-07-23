@@ -175,6 +175,23 @@ section{position:relative; z-index:2; padding:110px 6vw;}
 .flame-author{margin-top:12px; font-size:12px; color:var(--ivory-dimmer);}
 .empty-note{text-align:center; color:var(--ivory-dimmer); font-size:13.5px; padding:30px 0;}
 
+.flame-actions{display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;}
+.action-btn{
+  display:inline-flex; align-items:center; gap:6px;
+  background:var(--void-2); border:1px solid var(--line); border-radius:100px;
+  padding:8px 14px; font-size:12.5px; color:var(--ivory-dim); transition:all .15s;
+}
+.action-btn:hover:not([disabled]){border-color:var(--gold); color:var(--gold-soft);}
+.action-btn .count{font-family:'JetBrains Mono',monospace; color:var(--ivory-dimmer); font-size:12px;}
+.action-btn.active{border-color:var(--gold); background:rgba(231,185,75,.1); color:var(--gold-soft);}
+.action-btn.active .count{color:var(--gold-soft);}
+.action-btn[disabled]{cursor:default;}
+.answer-toggle{margin-left:auto;}
+.answer-toggle.active{border-color:var(--wine-soft); background:rgba(162,79,99,.14); color:var(--wine-soft);}
+.pill.answered{background:rgba(162,79,99,.18); color:var(--wine-soft);}
+.flame-dot.answered{background:radial-gradient(circle at 40% 35%, var(--wine-soft), var(--wine) 55%, transparent 75%); box-shadow:0 0 12px 2px rgba(162,79,99,.55);}
+.flame-card.answered{border-color:rgba(162,79,99,.4);}
+
 /* ---------- pricing ---------- */
 .plans{max-width:1000px; margin:0 auto; display:grid; grid-template-columns:repeat(3,1fr); gap:18px;}
 .plan{
@@ -474,7 +491,11 @@ async function loadPrayers(){
     author: row.author,
     date: new Date(row.created_at),
     tier: row.tier,
-    public: row.is_public
+    public: row.is_public,
+    cheerCount: row.cheer_count || 0,
+    prayCount: row.pray_count || 0,
+    isAnswered: row.is_answered || false,
+    answeredAt: row.answered_at ? new Date(row.answered_at) : null
   }));
   renderTimeline();
   renderMypage();
@@ -515,34 +536,93 @@ function tierBadge(tierId){
   const t = TIERS.find(t=>t.id===tierId);
   return t.id==='eternal' ? `<span class="pill eternal">🕯 영원 기도</span>` : (t.id==='devout' ? `<span class="pill">정성 기도</span>` : `<span class="pill">라이트 기도</span>`);
 }
+
+/* 세션 동안 이미 반응한 기도를 기억해서 중복 클릭 방지 (실제 로그인 붙이면 사용자 단위로 강화 예정) */
+const reacted = new Set();
+
+function prayerCardHtml(p, opts){
+  opts = opts || {};
+  const showAuthor = opts.showAuthor !== false;
+  const showAnsweredToggle = opts.showAnsweredToggle === true;
+  const cheeredBefore = reacted.has(p.id + '-cheer');
+  const prayedBefore = reacted.has(p.id + '-pray');
+  return `
+    <div class="flame-item">
+      <div class="flame-dot${p.isAnswered ? ' answered':''}"></div>
+      <div class="flame-card${p.isAnswered ? ' answered':''}">
+        <div class="flame-meta">
+          <span class="date">${fmtDate(p.date)}</span>
+          <span class="pill">${p.category}</span>
+          ${tierBadge(p.tier)}
+          ${!p.public ? '<span class="pill">비공개</span>':''}
+          ${p.isAnswered ? '<span class="pill answered">✨ 응답받음</span>':''}
+        </div>
+        <h4 class="serif">당신의 "${p.title}"를 위해</h4>
+        <p>${p.content}</p>
+        ${showAuthor ? `<div class="flame-author">— ${p.author}</div>` : ''}
+        <div class="flame-actions">
+          <button class="action-btn${cheeredBefore ? ' active':''}" ${cheeredBefore ? 'disabled':''} onclick="reactToPrayer('${p.id}','cheer', this)">
+            🙌 응원해요 <span class="count">${p.cheerCount}</span>
+          </button>
+          <button class="action-btn${prayedBefore ? ' active':''}" ${prayedBefore ? 'disabled':''} onclick="reactToPrayer('${p.id}','pray', this)">
+            🙏 함께 기도할게요 <span class="count">${p.prayCount}</span>
+          </button>
+          ${showAnsweredToggle ? `
+          <button class="action-btn answer-toggle${p.isAnswered ? ' active':''}" onclick="toggleAnswered('${p.id}')">
+            ${p.isAnswered ? '✨ 응답받음 취소' : '🙏 기도응답 체크'}
+          </button>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+async function reactToPrayer(id, kind, btnEl){
+  const key = id + '-' + kind;
+  if(reacted.has(key)) return;
+  reacted.add(key);
+  btnEl.classList.add('active');
+  btnEl.disabled = true;
+  const countEl = btnEl.querySelector('.count');
+  countEl.textContent = parseInt(countEl.textContent, 10) + 1;
+
+  const { error } = await db.rpc('increment_reaction', { target_id: id, kind });
+  if(error){
+    console.error(error);
+    showToast('반응을 저장하지 못했어요');
+    return;
+  }
+  const p = prayers.find(p=>p.id===id);
+  if(p){ if(kind==='cheer') p.cheerCount++; else p.prayCount++; }
+}
+
+async function toggleAnswered(id){
+  const { error } = await db.rpc('toggle_answered', { target_id: id });
+  if(error){
+    console.error(error);
+    showToast('처리하지 못했어요. 다시 시도해주세요');
+    return;
+  }
+  const p = prayers.find(p=>p.id===id);
+  if(p){
+    p.isAnswered = !p.isAnswered;
+    p.answeredAt = p.isAnswered ? new Date() : null;
+  }
+  showToast(p && p.isAnswered ? '✨ 기도응답으로 표시했어요' : '표시를 취소했어요');
+  renderTimeline();
+  renderMypage();
+}
+
 function renderTimeline(){
   const filtered = prayers
     .filter(p=>p.public)
     .filter(p=> activeFilter==='전체' ? true : p.category===activeFilter)
     .sort((a,b)=> b.date - a.date);
 
-  threadList.innerHTML = '';
   if(filtered.length===0){
     threadList.innerHTML = '<div class="empty-note">아직 이 카테고리엔 기도가 없어요. 첫 기도를 남겨보세요.</div>';
     return;
   }
-  filtered.forEach(p=>{
-    const el = document.createElement('div');
-    el.className = 'flame-item';
-    el.innerHTML = `
-      <div class="flame-dot"></div>
-      <div class="flame-card">
-        <div class="flame-meta">
-          <span class="date">${fmtDate(p.date)}</span>
-          <span class="pill">${p.category}</span>
-          ${tierBadge(p.tier)}
-        </div>
-        <h4 class="serif">당신의 "${p.title}"를 위해</h4>
-        <p>${p.content}</p>
-        <div class="flame-author">— ${p.author}</div>
-      </div>`;
-    threadList.appendChild(el);
-  });
+  threadList.innerHTML = filtered.map(p=>prayerCardHtml(p, {showAuthor:true})).join('');
 }
 
 /* ---------------- pricing render ---------------- */
@@ -583,20 +663,7 @@ function renderMypage(){
   if(mine.length===0){
     listHtml = `<div class="empty-note">아직 등록한 기도가 없어요. 첫 기도를 남겨보세요.</div>`;
   } else {
-    listHtml = `<div class="thread">` + mine.map(p=>`
-      <div class="flame-item">
-        <div class="flame-dot"></div>
-        <div class="flame-card">
-          <div class="flame-meta">
-            <span class="date">${fmtDate(p.date)}</span>
-            <span class="pill">${p.category}</span>
-            ${tierBadge(p.tier)}
-            ${!p.public ? '<span class="pill">비공개</span>':''}
-          </div>
-          <h4 class="serif">당신의 "${p.title}"를 위해</h4>
-          <p>${p.content}</p>
-        </div>
-      </div>`).join('') + `</div>`;
+    listHtml = `<div class="thread">` + mine.map(p=>prayerCardHtml(p, {showAuthor:false, showAnsweredToggle:true})).join('') + `</div>`;
   }
   mypageBox.innerHTML = `
     <div class="mypage-header">
