@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pray4ever — 당신의 기도를 기록하세요</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --void:#090c16;
+  --void-2:#0e1220;
+  --card:#141a2e;
+  --card-2:#181f38;
+  --line:#282f4a;
+  --gold:#e7b94b;
+  --gold-soft:#f2d98a;
+  --wine:#a24f63;
+  --wine-soft:#c97a8c;
+  --ivory:#f3efe3;
+  --ivory-dim:#9a9bb0;
+  --ivory-dimmer:#6d7089;
+  --radius:14px;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--void);
+  color:var(--ivory);
+  font-family:'Noto Sans KR', sans-serif;
+  font-weight:300;
+  line-height:1.6;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+.serif{font-family:'Noto Serif KR', serif;}
+.mono{font-family:'JetBrains Mono', monospace;}
+a{color:inherit; text-decoration:none;}
+button{font-family:inherit; cursor:pointer;}
+::selection{background:var(--gold); color:var(--void);}
+
+/* ---------- background ember canvas ---------- */
+#embers{position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.55;}
+
+/* ---------- header ---------- */
+header{
+  position:fixed; top:0; left:0; right:0; z-index:100;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:18px 5vw;
+  background:rgba(9,12,22,.55);
+  backdrop-filter:blur(14px);
+  border-bottom:1px solid rgba(255,255,255,.06);
+}
+.logo{font-family:'Noto Serif KR', serif; font-size:19px; font-weight:600; letter-spacing:.02em; display:flex; align-items:center; gap:8px;}
+.logo .dot{width:7px; height:7px; border-radius:50%; background:var(--gold); box-shadow:0 0 10px 2px var(--gold);}
+nav{display:flex; align-items:center; gap:28px; font-size:14px; color:var(--ivory-dim);}
+nav a:hover{color:var(--ivory);}
+.nav-cta{
+  border:1px solid var(--gold); color:var(--gold-soft);
+  padding:8px 16px; border-radius:100px; font-size:13px; letter-spacing:.02em;
+  transition:all .2s;
+}
+.nav-cta:hover{background:var(--gold); color:var(--void);}
+.hide-mobile{display:inline-flex;}
+@media(max-width:720px){ .hide-mobile{display:none;} }
+
+/* ---------- hero ---------- */
+.hero{
+  position:relative; z-index:2;
+  min-height:100svh;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center; padding:120px 6vw 60px;
+}
+.eyebrow{
+  font-size:12px; letter-spacing:.28em; color:var(--gold-soft);
+  text-transform:uppercase; margin-bottom:22px; opacity:.85;
+}
+.hero h1{
+  font-family:'Noto Serif KR', serif;
+  font-size:clamp(28px, 5.4vw, 56px);
+  font-weight:600;
+  line-height:1.35;
+  max-width:900px;
+}
+.blank{
+  display:inline-block;
+  min-width:1.2em;
+  border-bottom:2px solid var(--gold);
+  color:var(--gold-soft);
+  padding:0 .1em 2px;
+  position:relative;
+}
+.blank::after{
+  content:'';
+  display:inline-block;
+  width:2px; height:.85em;
+  background:var(--gold);
+  margin-left:3px;
+  vertical-align:-2px;
+  animation:blink 1s step-end infinite;
+}
+@keyframes blink{50%{opacity:0;}}
+.hero p.sub{
+  margin-top:26px; max-width:520px; color:var(--ivory-dim);
+  font-size:15.5px; font-weight:300;
+}
+.hero-ctas{margin-top:40px; display:flex; gap:14px; flex-wrap:wrap; justify-content:center;}
+.btn{
+  padding:14px 26px; border-radius:100px; font-size:14.5px; font-weight:500;
+  letter-spacing:.01em; transition:all .2s; border:1px solid transparent; display:inline-flex; align-items:center; gap:8px;
+}
+.btn-primary{background:var(--gold); color:#241a05;}
+.btn-primary:hover{background:var(--gold-soft); transform:translateY(-1px);}
+.btn-ghost{border:1px solid var(--line); color:var(--ivory);}
+.btn-ghost:hover{border-color:var(--gold); color:var(--gold-soft);}
+.scroll-hint{
+  position:absolute; bottom:28px; left:50%; transform:translateX(-50%);
+  font-size:11px; color:var(--ivory-dimmer); letter-spacing:.15em; text-transform:uppercase;
+  display:flex; flex-direction:column; align-items:center; gap:8px;
+}
+.scroll-hint span{width:1px; height:26px; background:linear-gradient(var(--ivory-dimmer),transparent); animation:down 1.8s ease-in-out infinite;}
+@keyframes down{0%{transform:scaleY(0); transform-origin:top;} 50%{transform:scaleY(1); transform-origin:top;} 51%{transform-origin:bottom;} 100%{transform:scaleY(0); transform-origin:bottom;}}
+
+/* ---------- section shell ---------- */
+section{position:relative; z-index:2; padding:110px 6vw;}
+.section-head{max-width:640px; margin:0 auto 56px; text-align:center;}
+.section-head .kicker{font-size:12px; letter-spacing:.24em; text-transform:uppercase; color:var(--wine-soft); margin-bottom:14px;}
+.section-head h2{font-family:'Noto Serif KR',serif; font-size:clamp(24px,3.4vw,36px); font-weight:600;}
+.section-head p{margin-top:14px; color:var(--ivory-dim); font-size:14.5px;}
+
+/* ---------- how it works ---------- */
+.steps{max-width:920px; margin:0 auto; display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden;}
+.step{background:var(--card); padding:34px 26px;}
+.step .num{font-family:'JetBrains Mono',monospace; color:var(--gold); font-size:13px; letter-spacing:.05em;}
+.step h3{font-family:'Noto Serif KR',serif; font-size:18px; font-weight:600; margin:14px 0 10px;}
+.step p{font-size:13.8px; color:var(--ivory-dim);}
+@media(max-width:720px){.steps{grid-template-columns:1fr;}}
+
+/* ---------- timeline ---------- */
+.tabs{display:flex; gap:8px; overflow-x:auto; max-width:920px; margin:0 auto 44px; padding-bottom:6px;}
+.tab{
+  flex:0 0 auto; padding:8px 16px; border-radius:100px; border:1px solid var(--line);
+  font-size:13px; color:var(--ivory-dim); white-space:nowrap; transition:all .15s;
+}
+.tab.active, .tab:hover{border-color:var(--gold); color:var(--gold-soft); background:rgba(231,185,75,.08);}
+
+.thread{max-width:680px; margin:0 auto; position:relative; padding-left:34px;}
+.thread::before{
+  content:''; position:absolute; left:9px; top:6px; bottom:6px; width:1px;
+  background:linear-gradient(var(--line), var(--line) 90%, transparent);
+}
+.flame-item{position:relative; margin-bottom:34px; animation:rise .5s ease both;}
+@keyframes rise{from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);}}
+.flame-dot{
+  position:absolute; left:-34px; top:6px; width:19px; height:19px; border-radius:50%;
+  background:radial-gradient(circle at 40% 35%, var(--gold-soft), var(--gold) 55%, transparent 75%);
+  box-shadow:0 0 12px 2px rgba(231,185,75,.55);
+  animation:flicker 2.6s ease-in-out infinite;
+}
+.flame-item:nth-child(3n) .flame-dot{animation-duration:3.1s;}
+.flame-item:nth-child(4n) .flame-dot{animation-duration:2.2s;}
+@keyframes flicker{0%,100%{transform:scale(1); opacity:1;} 45%{transform:scale(.88); opacity:.85;} 55%{transform:scale(1.05); opacity:1;}}
+.flame-card{
+  background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+  padding:20px 22px; transition:border-color .2s;
+}
+.flame-card:hover{border-color:rgba(231,185,75,.4);}
+.flame-meta{display:flex; align-items:center; gap:10px; font-size:11.5px; color:var(--ivory-dimmer); margin-bottom:10px; flex-wrap:wrap;}
+.flame-meta .date{font-family:'JetBrains Mono',monospace;}
+.pill{padding:2px 9px; border-radius:100px; background:rgba(255,255,255,.05); font-size:11px; color:var(--ivory-dim);}
+.pill.eternal{background:rgba(231,185,75,.14); color:var(--gold-soft);}
+.flame-card h4{font-family:'Noto Serif KR',serif; font-size:17px; font-weight:600; margin-bottom:8px;}
+.flame-card p{font-size:13.6px; color:var(--ivory-dim);}
+.flame-author{margin-top:12px; font-size:12px; color:var(--ivory-dimmer);}
+.empty-note{text-align:center; color:var(--ivory-dimmer); font-size:13.5px; padding:30px 0;}
+
+.flame-actions{display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;}
+.action-btn{
+  display:inline-flex; align-items:center; gap:6px;
+  background:var(--void-2); border:1px solid var(--line); border-radius:100px;
+  padding:8px 14px; font-size:12.5px; color:var(--ivory-dim); transition:all .15s;
+}
+.action-btn:hover:not([disabled]){border-color:var(--gold); color:var(--gold-soft);}
+.action-btn .count{font-family:'JetBrains Mono',monospace; color:var(--ivory-dimmer); font-size:12px;}
+.action-btn.active{border-color:var(--gold); background:rgba(231,185,75,.1); color:var(--gold-soft);}
+.action-btn.active .count{color:var(--gold-soft);}
+.action-btn[disabled]{cursor:default;}
+
+/* ---------- pricing ---------- */
+.plans{max-width:1000px; margin:0 auto; display:grid; grid-template-columns:repeat(3,1fr); gap:18px;}
+.plan{
+  background:var(--card); border:1px solid var(--line); border-radius:18px; padding:32px 26px;
+  display:flex; flex-direction:column; position:relative;
+}
+.plan.featured{border-color:var(--gold); box-shadow:0 0 0 1px var(--gold), 0 20px 40px -20px rgba(231,185,75,.25);}
+.plan .badge{position:absolute; top:-12px; right:24px; background:var(--gold); color:#241a05; font-size:11px; font-weight:600; padding:4px 12px; border-radius:100px;}
+.plan .pname{font-family:'Noto Serif KR',serif; font-size:19px; font-weight:600; margin-bottom:6px;}
+.plan .pprice{font-size:30px; font-weight:600; font-family:'JetBrains Mono',monospace; color:var(--gold-soft); margin-bottom:18px;}
+.plan .pprice span{font-size:13px; color:var(--ivory-dimmer); font-family:'Noto Sans KR';}
+.plan ul{list-style:none; margin-bottom:24px; flex:1;}
+.plan li{font-size:13.5px; color:var(--ivory-dim); padding:7px 0; padding-left:18px; position:relative;}
+.plan li::before{content:'—'; position:absolute; left:0; color:var(--gold);}
+.plan .btn{width:100%; justify-content:center;}
+@media(max-width:820px){.plans{grid-template-columns:1fr;}}
+
+/* ---------- mypage ---------- */
+.mypage-box{max-width:640px; margin:0 auto;}
+.login-prompt{
+  text-align:center; padding:50px 30px; background:var(--card); border:1px dashed var(--line); border-radius:var(--radius);
+}
+.login-prompt p{color:var(--ivory-dim); font-size:14px; margin-bottom:20px;}
+.mypage-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:26px;}
+.mypage-header .who{font-size:14.5px;}
+.mypage-header .who b{color:var(--gold-soft);}
+.logout{font-size:12.5px; color:var(--ivory-dimmer); border-bottom:1px solid var(--ivory-dimmer);}
+
+/* ---------- footer ---------- */
+footer{position:relative; z-index:2; padding:50px 6vw 40px; border-top:1px solid var(--line); text-align:center;}
+footer .fl{font-family:'Noto Serif KR',serif; font-size:16px; margin-bottom:10px;}
+footer p{font-size:12px; color:var(--ivory-dimmer); max-width:420px; margin:4px auto;}
+
+/* ---------- modal ---------- */
+.overlay{
+  position:fixed; inset:0; z-index:200; background:rgba(5,6,12,.7); backdrop-filter:blur(6px);
+  display:none; align-items:flex-start; justify-content:center; padding:6vh 5vw; overflow-y:auto;
+}
+.overlay.open{display:flex;}
+.modal{
+  background:var(--card-2); border:1px solid var(--line); border-radius:20px; max-width:480px; width:100%;
+  padding:32px 28px 28px; position:relative; animation:pop .25s ease;
+}
+@keyframes pop{from{opacity:0; transform:translateY(8px) scale(.98);} to{opacity:1; transform:translateY(0) scale(1);}}
+.modal .close{position:absolute; top:18px; right:20px; font-size:20px; color:var(--ivory-dimmer); line-height:1;}
+.modal .close:hover{color:var(--ivory);}
+.modal h3{font-family:'Noto Serif KR',serif; font-size:21px; font-weight:600; margin-bottom:4px;}
+.modal .mhint{font-size:12.5px; color:var(--ivory-dimmer); margin-bottom:24px;}
+.field{margin-bottom:16px;}
+.field label{display:block; font-size:12.5px; color:var(--ivory-dim); margin-bottom:7px;}
+.field input[type=text], .field textarea, .field select{
+  width:100%; background:var(--void-2); border:1px solid var(--line); border-radius:9px;
+  padding:11px 13px; color:var(--ivory); font-family:inherit; font-size:14px;
+}
+.field textarea{min-height:80px; resize:vertical;}
+.field input:focus, .field textarea:focus, .field select:focus{outline:none; border-color:var(--gold);}
+.blank-hint{font-size:12.5px; color:var(--ivory-dimmer); margin:8px 0 2px;}
+.toggle-row{display:flex; align-items:center; justify-content:space-between; background:var(--void-2); border:1px solid var(--line); border-radius:9px; padding:11px 13px; margin-bottom:16px;}
+.toggle-row span{font-size:13px; color:var(--ivory-dim);}
+.switch{width:38px; height:22px; border-radius:100px; background:var(--line); position:relative; transition:.2s;}
+.switch::after{content:''; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:var(--ivory-dim); transition:.2s;}
+.switch.on{background:rgba(231,185,75,.4);}
+.switch.on::after{left:18px; background:var(--gold);}
+.tier-options{display:flex; flex-direction:column; gap:8px; margin-bottom:20px;}
+.tier-opt{
+  display:flex; align-items:center; justify-content:space-between; border:1px solid var(--line); border-radius:9px;
+  padding:12px 14px; font-size:13.5px; cursor:pointer; transition:.15s;
+}
+.tier-opt:hover{border-color:rgba(231,185,75,.5);}
+.tier-opt.selected{border-color:var(--gold); background:rgba(231,185,75,.07);}
+.tier-opt .t-name{color:var(--ivory);}
+.tier-opt .t-price{font-family:'JetBrains Mono',monospace; color:var(--gold-soft);}
+.submit-btn{width:100%; justify-content:center; padding:15px; font-size:15px; margin-top:6px;}
+.submit-btn[disabled]{opacity:.6; pointer-events:none;}
+.form-note{font-size:11px; color:var(--ivory-dimmer); text-align:center; margin-top:14px;}
+
+/* ---------- toast ---------- */
+.toast{
+  position:fixed; bottom:26px; left:50%; transform:translateX(-50%) translateY(20px);
+  background:var(--gold); color:#241a05; padding:14px 22px; border-radius:100px; font-size:13.5px;
+  font-weight:500; z-index:300; opacity:0; transition:.3s; display:flex; align-items:center; gap:8px;
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+
+<canvas id="embers"></canvas>
+
+<header>
+  <div class="logo"><span class="dot"></span>pray4ever</div>
+  <nav>
+    <a href="#how" class="hide-mobile">소개</a>
+    <a href="#timeline" class="hide-mobile">타임라인</a>
+    <a href="#pricing" class="hide-mobile">요금제</a>
+    <a href="#" id="mypageLink" class="hide-mobile">마이페이지</a>
+    <a href="#" class="nav-cta" id="registerNavBtn">기도 등록</a>
+  </nav>
+</header>
+
+<section class="hero">
+  <div class="eyebrow">기도는 기록될 때, 더 오래갑니다</div>
+  <h1 class="serif">당신의 <span class="blank" id="heroBlank">엄마의 건강</span>를<br>위해 기도하세요</h1>
+  <p class="sub">한 번 남긴 기도는 사라지지 않습니다. pray4ever는 당신의 기도를 날짜와 함께 기록하고, 세상 어딘가의 마음과 조용히 연결합니다.</p>
+  <div class="hero-ctas">
+    <a href="#" class="btn btn-primary" id="heroRegisterBtn">기도 등록하기</a>
+    <a href="#timeline" class="btn btn-ghost">타임라인 둘러보기</a>
+  </div>
+  <div class="scroll-hint"><span></span>SCROLL</div>
+</section>
+
+<section id="how">
+  <div class="section-head">
+    <div class="kicker">How it works</div>
+    <h2 class="serif">세 걸음이면, 기도가 남습니다</h2>
+    <p>등록한 기도는 삭제되지 않고, 정한 기간 동안 세상에 함께 놓입니다.</p>
+  </div>
+  <div class="steps">
+    <div class="step">
+      <div class="num mono">01</div>
+      <h3>빈칸을 채워요</h3>
+      <p>"당신의 ' '를 위해"의 빈칸에, 지금 가장 간절한 이름이나 마음을 적습니다.</p>
+    </div>
+    <div class="step">
+      <div class="num mono">02</div>
+      <h3>정성을 표해요</h3>
+      <p>세 가지 요금제 중 하나를 선택하면, 기도가 정식으로 등록됩니다.</p>
+    </div>
+    <div class="step">
+      <div class="num mono">03</div>
+      <h3>영원히 기록돼요</h3>
+      <p>마이페이지에 날짜와 함께 남고, 타임라인에서 다른 이들의 기도와 나란히 놓입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section id="timeline">
+  <div class="section-head">
+    <div class="kicker">Timeline</div>
+    <h2 class="serif">지금, 누군가 이렇게<br>기도하고 있어요</h2>
+    <p>촛불 하나하나가 등록된 기도입니다. 조용히 함께 마음을 보태보세요.</p>
+  </div>
+  <div class="tabs" id="tabs"></div>
+  <div class="thread" id="threadList"></div>
+</section>
+
+<section id="pricing">
+  <div class="section-head">
+    <div class="kicker">Pricing</div>
+    <h2 class="serif">기도의 무게만큼, 정성을 담아요</h2>
+    <p>모든 등급의 기도는 마이페이지에 영구히 보관됩니다.</p>
+  </div>
+  <div class="plans" id="plans"></div>
+</section>
+
+<section id="mypage">
+  <div class="section-head">
+    <div class="kicker">My Page</div>
+    <h2 class="serif">내가 남긴 기도</h2>
+    <p>등록한 날짜와 함께, 나의 기도만 모아 볼 수 있어요.</p>
+  </div>
+  <div class="mypage-box" id="mypageBox"></div>
+</section>
+
+<footer>
+  <div class="fl serif">pray4ever</div>
+  <p>당신의 기도가, 누군가의 새벽이 됩니다.</p>
+  <p style="margin-top:16px; opacity:.7;">ⓒ 2026 pray4ever · 이 페이지는 프로토타입 데모이며, 실제 결제는 이루어지지 않습니다.</p>
+</footer>
+
+<!-- register modal -->
+<div class="overlay" id="registerOverlay">
+  <div class="modal">
+    <div class="close" data-close>×</div>
+    <h3 class="serif">기도 등록하기</h3>
+    <div class="mhint">빈칸을 채우면, 아래에 문장이 완성돼요.</div>
+    <form id="registerForm">
+      <div class="field">
+        <label>카테고리</label>
+        <select id="f-category">
+          <option>가족</option><option>건강</option><option>진로·취업</option>
+          <option>관계</option><option>사업</option><option>감사</option>
+          <option>나라·사회</option><option>기타</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>당신의 무엇을 위해 기도하나요?</label>
+        <input type="text" id="f-title" placeholder="예: 엄마의 건강, 취업 성공, 오랜 오해의 화해">
+        <div class="blank-hint" id="blankPreview">당신의 " "를 위해 기도합니다</div>
+      </div>
+      <div class="field">
+        <label>기도의 내용</label>
+        <textarea id="f-content" placeholder="조금 더 구체적인 마음을 적어주세요."></textarea>
+      </div>
+      <div class="field">
+        <label>이름 (공개 시 타임라인에 표시돼요)</label>
+        <input type="text" id="f-author" placeholder="예: 은혜, 익명의 기도자">
+      </div>
+      <div class="toggle-row">
+        <span>타임라인에 공개하기</span>
+        <div class="switch on" id="publicSwitch"></div>
+      </div>
+      <label style="display:block; font-size:12.5px; color:var(--ivory-dim); margin-bottom:9px;">요금제 선택</label>
+      <div class="tier-options" id="tierOptions"></div>
+      <button type="submit" class="btn btn-primary submit-btn" id="submitBtn">결제하고 기도 등록하기</button>
+      <div class="form-note">데모 버전으로, 실제 결제·과금은 발생하지 않습니다.</div>
+    </form>
+  </div>
+</div>
+
+<!-- login modal -->
+<div class="overlay" id="loginOverlay">
+  <div class="modal">
+    <div class="close" data-close>×</div>
+    <h3 class="serif">마이페이지 로그인</h3>
+    <div class="mhint">닉네임으로 간단히 시작해보세요. (데모 로그인)</div>
+    <form id="loginForm">
+      <div class="field">
+        <label>닉네임</label>
+        <input type="text" id="l-name" placeholder="예: 은혜" required>
+      </div>
+      <button type="submit" class="btn btn-primary submit-btn">로그인</button>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------------- ember background ---------------- */
+const canvas = document.getElementById('embers');
+const ctx = canvas.getContext('2d');
+let w,h;
+function resize(){ w=canvas.width=window.innerWidth; h=canvas.height=window.innerHeight; }
+resize(); window.addEventListener('resize', resize);
+const particles = Array.from({length:46}, ()=>spawn());
+function spawn(){
+  return {
+    x: Math.random()*w,
+    y: h + Math.random()*h,
+    r: Math.random()*1.6+0.4,
+    speed: Math.random()*0.35+0.12,
+    drift: (Math.random()-0.5)*0.3,
+    alpha: Math.random()*0.5+0.2,
+    hueGold: Math.random() > 0.25
+  };
+}
+function tick(){
+  ctx.clearRect(0,0,w,h);
+  particles.forEach(p=>{
+    p.y -= p.speed; p.x += Math.sin(p.y*0.01)*p.drift;
+    if(p.y < -10){ Object.assign(p, spawn(), {y: h+10}); }
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    ctx.fillStyle = p.hueGold ? `rgba(231,185,75,${p.alpha})` : `rgba(243,239,227,${p.alpha*0.5})`;
+    ctx.fill();
+  });
+  requestAnimationFrame(tick);
+}
+tick();
+
+/* ---------------- supabase ---------------- */
+const SUPABASE_URL = 'https://ffxqczybfzfmqoryihgh.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_eWmGtjNNrdVMwZpmLhZygg_fFpxNKy8';
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ---------------- data ---------------- */
+const CATEGORIES = ['전체','가족','건강','진로·취업','관계','사업','감사','나라·사회','기타'];
+const TIERS = [
+  {id:'light', name:'라이트 기도', price:3900, days:7, desc:'타임라인 7일 노출'},
+  {id:'devout', name:'정성 기도', price:9900, days:30, desc:'타임라인 30일 노출 · 기념일 알림'},
+  {id:'eternal', name:'영원 기도', price:19900, days:null, desc:'영구 고정 노출 · 매년 알림 · 인증서'}
+];
+
+function fmtDate(d){
+  return d.toISOString().slice(0,10).replace(/-/g,'.');
+}
+
+let prayers = []; // supabase에서 불러와 채워짐
+
+async function loadPrayers(){
+  const { data, error } = await db
+    .from('prayers')
+    .select('*')
+    .order('created_at', { ascending:false });
+
+  if(error){
+    console.error(error);
+    showToast('기도 목록을 불러오지 못했어요');
+    return;
+  }
+  prayers = data.map(row => ({
+    id: row.id,
+    category: row.category,
+    title: row.title,
+    content: row.content,
+    author: row.author,
+    date: new Date(row.created_at),
+    tier: row.tier,
+    public: row.is_public,
+    cheerCount: row.cheer_count || 0,
+    prayCount: row.pray_count || 0
+  }));
+  renderTimeline();
+  renderMypage();
+}
+
+let currentUser = null; // {name}
+let activeFilter = '전체';
+let selectedTier = 'devout';
+
+/* ---------------- hero cycling blank ---------------- */
+const blanks = ['엄마의 건강','다시 만날 날','첫 회사의 합격','잃어버린 꿈','화해할 용기','아이의 미래'];
+let bi = 0;
+const heroBlank = document.getElementById('heroBlank');
+function cycleBlank(){
+  bi = (bi+1) % blanks.length;
+  heroBlank.style.opacity = 0;
+  setTimeout(()=>{ heroBlank.textContent = blanks[bi]; heroBlank.style.opacity = 1; }, 250);
+}
+heroBlank.style.transition = 'opacity .25s';
+setInterval(cycleBlank, 2600);
+
+/* ---------------- tabs ---------------- */
+const tabsEl = document.getElementById('tabs');
+CATEGORIES.forEach(cat=>{
+  const b = document.createElement('button');
+  b.className = 'tab' + (cat===activeFilter ? ' active':'');
+  b.textContent = cat;
+  b.onclick = ()=>{ activeFilter = cat; renderTabs(); renderTimeline(); };
+  tabsEl.appendChild(b);
+});
+function renderTabs(){
+  [...tabsEl.children].forEach(b=> b.classList.toggle('active', b.textContent===activeFilter));
+}
+
+/* ---------------- timeline render ---------------- */
+const threadList = document.getElementById('threadList');
+function tierBadge(tierId){
+  const t = TIERS.find(t=>t.id===tierId);
+  return t.id==='eternal' ? `<span class="pill eternal">🕯 영원 기도</span>` : (t.id==='devout' ? `<span class="pill">정성 기도</span>` : `<span class="pill">라이트 기도</span>`);
+}
+
+/* 세션 동안 이미 반응한 기도를 기억해서 중복 클릭 방지 (실제 로그인 붙이면 사용자 단위로 강화 예정) */
+const reacted = new Set();
+
+function prayerCardHtml(p, opts){
+  opts = opts || {};
+  const showAuthor = opts.showAuthor !== false;
+  const cheeredBefore = reacted.has(p.id + '-cheer');
+  const prayedBefore = reacted.has(p.id + '-pray');
+  return `
+    <div class="flame-item">
+      <div class="flame-dot"></div>
+      <div class="flame-card">
+        <div class="flame-meta">
+          <span class="date">${fmtDate(p.date)}</span>
+          <span class="pill">${p.category}</span>
+          ${tierBadge(p.tier)}
+          ${!p.public ? '<span class="pill">비공개</span>':''}
+        </div>
+        <h4 class="serif">당신의 "${p.title}"를 위해</h4>
+        <p>${p.content}</p>
+        ${showAuthor ? `<div class="flame-author">— ${p.author}</div>` : ''}
+        <div class="flame-actions">
+          <button class="action-btn${cheeredBefore ? ' active':''}" ${cheeredBefore ? 'disabled':''} onclick="reactToPrayer('${p.id}','cheer', this)">
+            🙌 응원해요 <span class="count">${p.cheerCount}</span>
+          </button>
+          <button class="action-btn${prayedBefore ? ' active':''}" ${prayedBefore ? 'disabled':''} onclick="reactToPrayer('${p.id}','pray', this)">
+            🙏 함께 기도할게요 <span class="count">${p.prayCount}</span>
+          </button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function reactToPrayer(id, kind, btnEl){
+  const key = id + '-' + kind;
+  if(reacted.has(key)) return;
+  reacted.add(key);
+  btnEl.classList.add('active');
+  btnEl.disabled = true;
+  const countEl = btnEl.querySelector('.count');
+  countEl.textContent = parseInt(countEl.textContent, 10) + 1;
+
+  const { error } = await db.rpc('increment_reaction', { target_id: id, kind });
+  if(error){
+    console.error(error);
+    showToast('반응을 저장하지 못했어요');
+    return;
+  }
+  const p = prayers.find(p=>p.id===id);
+  if(p){ if(kind==='cheer') p.cheerCount++; else p.prayCount++; }
+}
+
+function renderTimeline(){
+  const filtered = prayers
+    .filter(p=>p.public)
+    .filter(p=> activeFilter==='전체' ? true : p.category===activeFilter)
+    .sort((a,b)=> b.date - a.date);
+
+  if(filtered.length===0){
+    threadList.innerHTML = '<div class="empty-note">아직 이 카테고리엔 기도가 없어요. 첫 기도를 남겨보세요.</div>';
+    return;
+  }
+  threadList.innerHTML = filtered.map(p=>prayerCardHtml(p, {showAuthor:true})).join('');
+}
+
+/* ---------------- pricing render ---------------- */
+const plansEl = document.getElementById('plans');
+TIERS.forEach((t,i)=>{
+  const el = document.createElement('div');
+  el.className = 'plan' + (t.id==='devout' ? ' featured':'');
+  el.innerHTML = `
+    ${t.id==='devout' ? '<div class="badge">가장 많이 선택</div>':''}
+    <div class="pname serif">${t.name}</div>
+    <div class="pprice">₩${t.price.toLocaleString()}<span> / 1건</span></div>
+    <ul>
+      <li>${t.desc}</li>
+      <li>마이페이지 영구 보관</li>
+      ${t.id!=='light' ? '<li>1년 후 기념일 알림</li>' : ''}
+      ${t.id==='eternal' ? '<li>PDF 기도 인증서 발급</li><li>프로필 영원 기도자 배지</li>' : ''}
+    </ul>
+    <button class="btn ${t.id==='devout' ? 'btn-primary':'btn-ghost'}" data-tier="${t.id}">이 요금제로 등록하기</button>
+  `;
+  el.querySelector('button').onclick = ()=>{ selectedTier = t.id; openRegister(); };
+  plansEl.appendChild(el);
+});
+
+/* ---------------- mypage render ---------------- */
+const mypageBox = document.getElementById('mypageBox');
+function renderMypage(){
+  if(!currentUser){
+    mypageBox.innerHTML = `
+      <div class="login-prompt">
+        <p>로그인하면 내가 등록한 기도를 날짜와 함께 모아 볼 수 있어요.</p>
+        <button class="btn btn-primary" id="mypageLoginBtn">로그인하기</button>
+      </div>`;
+    document.getElementById('mypageLoginBtn').onclick = openLogin;
+    return;
+  }
+  const mine = prayers.filter(p=>p.author===currentUser.name).sort((a,b)=>b.date-a.date);
+  let listHtml = '';
+  if(mine.length===0){
+    listHtml = `<div class="empty-note">아직 등록한 기도가 없어요. 첫 기도를 남겨보세요.</div>`;
+  } else {
+    listHtml = `<div class="thread">` + mine.map(p=>prayerCardHtml(p, {showAuthor:false})).join('') + `</div>`;
+  }
+  mypageBox.innerHTML = `
+    <div class="mypage-header">
+      <div class="who">안녕하세요, <b>${currentUser.name}</b>님</div>
+      <a href="#" class="logout" id="logoutBtn">로그아웃</a>
+    </div>
+    ${listHtml}
+  `;
+  document.getElementById('logoutBtn').onclick = (e)=>{ e.preventDefault(); currentUser=null; renderMypage(); showToast('로그아웃 되었습니다'); };
+}
+
+/* ---------------- modals ---------------- */
+const registerOverlay = document.getElementById('registerOverlay');
+const loginOverlay = document.getElementById('loginOverlay');
+
+function buildTierOptions(){
+  const wrap = document.getElementById('tierOptions');
+  wrap.innerHTML = '';
+  TIERS.forEach(t=>{
+    const el = document.createElement('div');
+    el.className = 'tier-opt' + (t.id===selectedTier ? ' selected':'');
+    el.innerHTML = `<span class="t-name">${t.name} <span style="color:var(--ivory-dimmer); font-size:12px;">· ${t.desc}</span></span><span class="t-price mono">₩${t.price.toLocaleString()}</span>`;
+    el.onclick = ()=>{ selectedTier = t.id; buildTierOptions(); updateSubmitBtn(); };
+    wrap.appendChild(el);
+  });
+}
+function updateSubmitBtn(){
+  const t = TIERS.find(t=>t.id===selectedTier);
+  document.getElementById('submitBtn').textContent = `결제하고 기도 등록하기 · ₩${t.price.toLocaleString()}`;
+}
+
+function openRegister(){
+  buildTierOptions();
+  updateSubmitBtn();
+  if(currentUser) document.getElementById('f-author').value = currentUser.name;
+  registerOverlay.classList.add('open');
+}
+function closeRegister(){ registerOverlay.classList.remove('open'); }
+function openLogin(){ loginOverlay.classList.add('open'); }
+function closeLogin(){ loginOverlay.classList.remove('open'); }
+
+document.getElementById('heroRegisterBtn').onclick = (e)=>{ e.preventDefault(); openRegister(); };
+document.getElementById('registerNavBtn').onclick = (e)=>{ e.preventDefault(); openRegister(); };
+document.getElementById('mypageLink').onclick = (e)=>{ e.preventDefault(); document.getElementById('mypage').scrollIntoView({behavior:'smooth'}); };
+document.querySelectorAll('[data-close]').forEach(b=> b.onclick = ()=>{ closeRegister(); closeLogin(); });
+[registerOverlay, loginOverlay].forEach(ov=>{
+  ov.addEventListener('click', (e)=>{ if(e.target===ov){ closeRegister(); closeLogin(); } });
+});
+
+const publicSwitch = document.getElementById('publicSwitch');
+let isPublic = true;
+publicSwitch.onclick = ()=>{ isPublic = !isPublic; publicSwitch.classList.toggle('on', isPublic); };
+
+const titleInput = document.getElementById('f-title');
+const blankPreview = document.getElementById('blankPreview');
+titleInput.addEventListener('input', ()=>{
+  blankPreview.textContent = `당신의 "${titleInput.value || ' '}"를 위해 기도합니다`;
+});
+
+/* ---------------- form submit (mock payment) ---------------- */
+document.getElementById('registerForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  const title = titleInput.value.trim();
+  const content = document.getElementById('f-content').value.trim();
+  const author = document.getElementById('f-author').value.trim() || '익명의 기도자';
+  const category = document.getElementById('f-category').value;
+  if(!title || !content){ showToast('빈칸과 내용을 모두 적어주세요'); return; }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = '결제 처리 중...';
+
+  const form = this;
+  setTimeout(async ()=>{
+    const { error } = await db.from('prayers').insert({
+      category, title, content, author,
+      tier: selectedTier,
+      is_public: isPublic
+    });
+
+    btn.disabled = false;
+    btn.textContent = originalText;
+
+    if(error){
+      console.error(error);
+      showToast('등록에 실패했어요. 다시 시도해주세요');
+      return;
+    }
+
+    if(!currentUser) currentUser = {name: author};
+
+    form.reset();
+    isPublic = true; publicSwitch.classList.add('on');
+    blankPreview.textContent = '당신의 " "를 위해 기도합니다';
+    closeRegister();
+    await loadPrayers();
+    showToast('🕯 기도가 등록되었습니다');
+  }, 1100);
+});
+
+document.getElementById('loginForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  const name = document.getElementById('l-name').value.trim();
+  if(!name) return;
+  currentUser = {name};
+  this.reset();
+  closeLogin();
+  renderMypage();
+  document.getElementById('mypage').scrollIntoView({behavior:'smooth'});
+  showToast(`${name}님, 환영합니다`);
+});
+
+/* ---------------- toast ---------------- */
+let toastTimer;
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.classList.remove('show'), 2200);
+}
+
+/* ---------------- init ---------------- */
+loadPrayers();
+</script>
+</body>
+</html>
