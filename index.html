@@ -6,6 +6,7 @@
 <title>pray4ever — 당신의 기도를 기록하세요</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
   --void:#090c16;
@@ -435,6 +436,11 @@ function tick(){
 }
 tick();
 
+/* ---------------- supabase ---------------- */
+const SUPABASE_URL = 'https://ffxqczybfzfmqoryihgh.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_eWmGtjNNrdVMwZpmLhZygg_fFpxNKy8';
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
 /* ---------------- data ---------------- */
 const CATEGORIES = ['전체','가족','건강','진로·취업','관계','사업','감사','나라·사회','기타'];
 const TIERS = [
@@ -443,26 +449,36 @@ const TIERS = [
   {id:'eternal', name:'영원 기도', price:19900, days:null, desc:'영구 고정 노출 · 매년 알림 · 인증서'}
 ];
 
-function daysAgoDate(n){
-  const d = new Date();
-  d.setDate(d.getDate()-n);
-  return d;
-}
 function fmtDate(d){
   return d.toISOString().slice(0,10).replace(/-/g,'.');
 }
 
-let prayers = [
-  {id:1, category:'건강', title:'엄마의 회복', content:'수술 후 회복이 더디신 어머니께 힘이 되어주세요. 통증 없이 편히 주무실 수 있기를.', author:'소망', date: daysAgoDate(0), tier:'eternal', public:true},
-  {id:2, category:'진로·취업', title:'세 번째 면접', content:'벌써 세 번째 도전이에요. 이번엔 정말 잘 되기를, 그리고 결과와 상관없이 흔들리지 않기를.', author:'하늘', date: daysAgoDate(1), tier:'devout', public:true},
-  {id:3, category:'관계', title:'오래된 오해', content:'말 한마디를 못해서 3년째 멀어진 친구가 있어요. 먼저 손 내밀 용기를 주세요.', author:'익명의 기도자', date: daysAgoDate(2), tier:'light', public:true},
-  {id:4, category:'가족', title:'다시 웃는 저녁 식탁', content:'요즘 자주 다투는 부모님이 예전처럼 편안해지시길.', author:'단비', date: daysAgoDate(4), tier:'devout', public:true},
-  {id:5, category:'사업', title:'첫 매출이 나는 날', content:'작게 시작한 가게예요. 이번 달엔 월세라도 내게 해주세요.', author:'우진', date: daysAgoDate(6), tier:'eternal', public:true},
-  {id:6, category:'감사', title:'무사히 지나온 한 해', content:'큰 사고 없이, 아프지 않고 여기까지 온 것에 감사합니다.', author:'채영', date: daysAgoDate(9), tier:'light', public:true},
-  {id:7, category:'나라·사회', title:'재난 현장의 이웃들', content:'집을 잃은 분들이 오늘 밤은 따뜻하게 잘 수 있기를.', author:'익명의 기도자', date: daysAgoDate(11), tier:'devout', public:true},
-  {id:8, category:'기타', title:'잃어버린 꿈을 다시', content:'포기했던 그림을, 서른 넘어 다시 시작해보려 해요. 두렵지 않게 해주세요.', author:'로아', date: daysAgoDate(14), tier:'light', public:true},
-];
-let nextId = 9;
+let prayers = []; // supabase에서 불러와 채워짐
+
+async function loadPrayers(){
+  const { data, error } = await db
+    .from('prayers')
+    .select('*')
+    .order('created_at', { ascending:false });
+
+  if(error){
+    console.error(error);
+    showToast('기도 목록을 불러오지 못했어요');
+    return;
+  }
+  prayers = data.map(row => ({
+    id: row.id,
+    category: row.category,
+    title: row.title,
+    content: row.content,
+    author: row.author,
+    date: new Date(row.created_at),
+    tier: row.tier,
+    public: row.is_public
+  }));
+  renderTimeline();
+  renderMypage();
+}
 
 let currentUser = null; // {name}
 let activeFilter = '전체';
@@ -654,24 +670,30 @@ document.getElementById('registerForm').addEventListener('submit', function(e){
   const originalText = btn.textContent;
   btn.textContent = '결제 처리 중...';
 
-  setTimeout(()=>{
-    prayers.unshift({
-      id: nextId++,
+  const form = this;
+  setTimeout(async ()=>{
+    const { error } = await db.from('prayers').insert({
       category, title, content, author,
-      date: new Date(),
       tier: selectedTier,
-      public: isPublic
+      is_public: isPublic
     });
-    if(!currentUser) currentUser = {name: author};
 
     btn.disabled = false;
     btn.textContent = originalText;
-    this.reset();
+
+    if(error){
+      console.error(error);
+      showToast('등록에 실패했어요. 다시 시도해주세요');
+      return;
+    }
+
+    if(!currentUser) currentUser = {name: author};
+
+    form.reset();
     isPublic = true; publicSwitch.classList.add('on');
     blankPreview.textContent = '당신의 " "를 위해 기도합니다';
     closeRegister();
-    renderTimeline();
-    renderMypage();
+    await loadPrayers();
     showToast('🕯 기도가 등록되었습니다');
   }, 1100);
 });
@@ -699,8 +721,7 @@ function showToast(msg){
 }
 
 /* ---------------- init ---------------- */
-renderTimeline();
-renderMypage();
+loadPrayers();
 </script>
 </body>
 </html>
